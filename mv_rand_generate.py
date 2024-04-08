@@ -31,7 +31,7 @@ def mv_rand_generate(max_remove_count=5, new_num_per_origin=100):
     for r in range(1, max_remove_count + 1):
         feature_combinations += list(itertools.combinations(features, r))
 
-    # RANDOM SPARSE DATA (excluding complete data) #
+    # SPARSE DATA (including complete data) #
     features = [col for col in complete_df.columns if col != "target"]
 
     new_x_rows = []
@@ -47,6 +47,10 @@ def mv_rand_generate(max_remove_count=5, new_num_per_origin=100):
 
     x_df = pd.concat(new_x_rows, ignore_index=True, axis=1).T
     z_df = pd.concat(new_z_rows, ignore_index=True, axis=1).T
+
+    x_df = pd.concat([x_df, complete_df], ignore_index=True)
+    z_df = pd.concat([z_df, complete_df], ignore_index=True)
+
     class_df = x_df["target"].astype(int)
     x_df = x_df.drop("target", axis=1)
     z_df = z_df.drop("target", axis=1)

@@ -20,7 +20,7 @@ def mv_generate(max_remove_count=3):
     complete_df = pd.concat([X_df_scaled, y_df], axis=1)
     complete_df
 
-    # SPARSE DATA (excluding complete data) #
+    # SPARSE DATA (including complete data) #
     features = [col for col in complete_df.columns if col != "target"]
 
     new_x_rows = []
@@ -38,7 +38,11 @@ def mv_generate(max_remove_count=3):
 
     x_df = pd.concat(new_x_rows, ignore_index=True, axis=1).T
     z_df = pd.concat(new_z_rows, ignore_index=True, axis=1).T
-    class_df = x_df[["target"]].astype(int)
+
+    x_df = pd.concat([x_df, complete_df], ignore_index=True)
+    z_df = pd.concat([z_df, complete_df], ignore_index=True)
+
+    class_df = x_df["target"].astype(int)
     x_df = x_df.drop("target", axis=1)
     z_df = z_df.drop("target", axis=1)
 
