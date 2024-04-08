@@ -23,24 +23,23 @@ def mv_generate(max_remove_count=3):
     # SPARSE DATA (excluding complete data) #
     features = [col for col in complete_df.columns if col != "target"]
 
-    new_rows = []
+    new_x_rows = []
+    new_z_rows = []
 
     for index, row in complete_df.iterrows():
         for r in range(
             1, max_remove_count
         ):  # more than one feature should be removed and more than one feature should be kept
             for subset in itertools.combinations(features, r):
-                new_row = row.copy()
-                new_row[list(subset)] = 0
-                new_row["origin_index"] = index  # 원본 행의 인덱스를 저장
-                new_rows.append(new_row)
+                new_x_row = row.copy()
+                new_x_row[list(subset)] = 0
+                new_x_rows.append(new_x_row)
+                new_z_rows.append(complete_df.loc[index])
 
-    sparse_df = pd.concat(new_rows, ignore_index=True, axis=1).T
-    sparse_df["origin_index"] = sparse_df["origin_index"].fillna(
-        pd.Series(sparse_df.index)
-    )
-    sparse_df[["target", "origin_index"]] = sparse_df[
-        ["target", "origin_index"]
-    ].astype(int)
+    x_df = pd.concat(new_x_rows, ignore_index=True, axis=1).T
+    z_df = pd.concat(new_z_rows, ignore_index=True, axis=1).T
+    class_df = x_df[["target"]].astype(int)
+    x_df = x_df.drop("target", axis=1)
+    z_df = z_df.drop("target", axis=1)
 
-    return sparse_df, complete_df
+    return x_df, z_df, class_df

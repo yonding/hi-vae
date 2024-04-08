@@ -9,7 +9,7 @@ from sklearn.preprocessing import StandardScaler
 def mv_rand_generate(max_remove_count=5, new_num_per_origin=100):
     """
     Input: max_remove_count, new_num_per_origin
-    Output: sparse_df, complete_df
+    Output: rand_sparse_df, complete_df
     """
     # COMPLETE DATA #
     wine = load_wine()
@@ -34,22 +34,21 @@ def mv_rand_generate(max_remove_count=5, new_num_per_origin=100):
     # RANDOM SPARSE DATA (excluding complete data) #
     features = [col for col in complete_df.columns if col != "target"]
 
-    new_rows = []
+    new_x_rows = []
+    new_z_rows = []
 
     for index, row in complete_df.iterrows():
         random_combinations = random.sample(feature_combinations, new_num_per_origin)
         for subset in random_combinations:
-            new_row = row.copy()
-            new_row[list(subset)] = 0
-            new_row["origin_index"] = index  # 원본 행의 인덱스를 저장
-            new_rows.append(new_row)
+            new_x_row = row.copy()
+            new_x_row[list(subset)] = 0
+            new_x_rows.append(new_x_row)
+            new_z_rows.append(complete_df.loc[index])
 
-    rand_sparse_df = pd.concat(new_rows, ignore_index=True, axis=1).T
-    rand_sparse_df["origin_index"] = rand_sparse_df["origin_index"].fillna(
-        pd.Series(rand_sparse_df.index)
-    )
-    rand_sparse_df[["target", "origin_index"]] = rand_sparse_df[
-        ["target", "origin_index"]
-    ].astype(int)
+    x_df = pd.concat(new_x_rows, ignore_index=True, axis=1).T
+    z_df = pd.concat(new_z_rows, ignore_index=True, axis=1).T
+    class_df = x_df["target"].astype(int)
+    x_df = x_df.drop("target", axis=1)
+    z_df = z_df.drop("target", axis=1)
 
-    return rand_sparse_df, complete_df
+    return x_df, z_df, class_df
