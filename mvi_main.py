@@ -1,14 +1,18 @@
+from mv_generate import mv_generate
 from mv_rand_generate import mv_rand_generate
+from mv_generate_single import mv_generate_single
 from split_datasets import split_and_convert_to_tensor
 from args import parse_args
 import torch
-import pandas as pd
+from tqdm import tqdm
+
 import numpy as np
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
 from torch.utils.data import Dataset, DataLoader
-import argparse
+from torch.optim.lr_scheduler import StepLR
+
 
 
 class MVIDataset(Dataset):
@@ -91,7 +95,7 @@ class customLoss(nn.Module):
     def forward(self, x_recon, z, mu, logvar):
         loss_MSE = self.mse_loss(x_recon, z)
         loss_KLD = -0.5 * torch.sum(1 + logvar - mu.pow(2) - logvar.exp())
-        return loss_MSE + loss_KLD
+        return loss_MSE + 0.01 * loss_KLD
 
 
 def weights_init_uniform_rule(m):
@@ -106,11 +110,10 @@ def weights_init_uniform_rule(m):
 
 
 def main(args):
-    train_losses = []
 
     x_df, z_df, y_df = mv_rand_generate(
         max_remove_count=args.max_remove_count,
-        new_num_per_origin=args.new_num_per_origin,
+        new_num_per_origin=args.new_num_per_origin
     )
 
     x_train, x_val, x_test, y_train, y_val, y_test, z_train, z_val, z_test = (
@@ -130,15 +133,44 @@ def main(args):
     model = Autoencoder(x_train.shape[1], args.H, args.H2, args.latent_dim).to(
         args.device
     )
+    n_parameters = sum(p.numel() for p in model.parameters() if p.requires_grad)
+    print("the number of parameters: "+str(n_parameters))
+    print("----------------------------------------------------")
     model.apply(weights_init_uniform_rule)
-    optimizer = optim.Adam(model.parameters(), lr=1e-3)
+    optimizer = optim.Adam(model.parameters(), lr=1e-2)
+    step_size = 500
+    gamma = 0.8
+    scheduler = StepLR(optimizer, step_size=step_size, gamma=gamma)
+    print("step_size: "+str(step_size))
+    print("gamma: "+str(gamma))
+    print("----------------------------------------------------")
     loss_mse = customLoss()  # MSE + KLD
 
     for epoch in range(1, args.epochs + 1):
-        train(epoch, model, train_loader, optimizer, loss_mse, train_losses, args)
+        scheduler.step()
+        train_loss = train(epoch, model, train_loader, optimizer, loss_mse, args)
+        if epoch % 100 == 0:
+            val_loss = valid(epoch, model, val_loader, loss_mse, args)
+            print("====> Epoch: {} Train loss: {:.4f} Val loss: {:.4f}".format(epoch, train_loss, val_loss))
+            print("")
+            print("")
+            print("")
+            print("")
 
 
-def train(epoch, model, train_loader, optimizer, loss_fn, train_losses, args):
+    checkpoint_path = f"./main_{args.max_remove_count}_{args.new_num_per_origin}_{args.epochs}_{args.H}_{args.H2}_{args.latent_dim}.pth"
+
+    checkpoint = {
+        'model_state_dict': model.state_dict(),
+        'optimizer_state_dict': optimizer.state_dict(),
+    }
+
+    torch.save(checkpoint, checkpoint_path)
+
+
+def train(
+    epoch, model, train_loader, optimizer, loss_fn, args
+):
     model.train()
     train_loss = 0
     for batch_idx, (data, targets) in enumerate(train_loader):
@@ -151,15 +183,45 @@ def train(epoch, model, train_loader, optimizer, loss_fn, train_losses, args):
         train_loss += loss.item()
         optimizer.step()
 
-    if epoch % 200 == 0:
-        print(
-            "====> Epoch: {} Average loss: {:.4f}".format(
-                epoch, train_loss / len(train_loader.dataset)
-            )
-        )
-        train_losses.append(train_loss / len(train_loader.dataset))
+    if epoch % 100 == 0:
+        print("-----------------TRAIN RESULT------------------")   
+        for d, r, t in zip(data[:3], recon_batch[:3], targets[:3]):
+            print("I: ", d)
+            print("R: ", r)
+            print("G: ", t)
+            print("----------------------------------------------------")
+    
+    return train_loss / len(train_loader.dataset)
+
+
+def valid(epoch, model, val_loader, loss_fn, args):
+    model.eval()
+    val_loss = 0
+    with torch.no_grad():
+        for batch_idx, (data, targets) in enumerate(val_loader):
+            data = data.to(args.device)
+            targets = targets.to(args.device)
+
+            recon_batch, mu, logvar = model(data)
+            loss = loss_fn(recon_batch, targets, mu, logvar)
+            val_loss += loss.item()
+    
+    if epoch % 100 == 0:
+        print("---------------VALID RESULT------------------")   
+        for d, r, t in zip(data[:3], recon_batch[:3], targets[:3]):
+            print("I: ", torch.round(d*10000)/10000)
+            print("R: ", torch.round(r*10000)/10000)
+            print("G: ", torch.round(t*10000)/10000)
+            print("----------------------------------------------------")
+
+    return val_loss / len(val_loader.dataset)
 
 
 if __name__ == "__main__":
     args = parse_args()
+
+    print("-----------------SETTINGS-------------------")
+    for arg in vars(args):
+        print(arg, ':', getattr(args, arg))
+    print("--------------------------------------------")
     main(args)
